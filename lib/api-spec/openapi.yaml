@@ -3,13 +3,17 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Auto Viral Clip Generator API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: Storage
+    description: Object storage endpoints
+  - name: videos
+    description: Video upload, processing, and clip retrieval
 paths:
   /healthz:
     get:
@@ -24,6 +28,269 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /storage/uploads/request-url:
+    post:
+      tags: [Storage]
+      operationId: requestUploadUrl
+      summary: Request a presigned URL for file upload
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UploadUrlRequest"
+      responses:
+        "200":
+          description: Presigned upload URL generated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UploadUrlResponse"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Failed to generate upload URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /storage/public-objects/{filePath}:
+    get:
+      tags: [Storage]
+      operationId: getPublicObject
+      summary: Serve a public asset
+      parameters:
+        - name: filePath
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Object content
+          content:
+            "*/*":
+              schema:
+                type: string
+                format: binary
+        "404":
+          description: File not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /storage/objects/{objectPath}:
+    get:
+      tags: [Storage]
+      operationId: getStorageObject
+      summary: Serve an object entity
+      parameters:
+        - name: objectPath
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Object content
+          content:
+            "*/*":
+              schema:
+                type: string
+                format: binary
+        "404":
+          description: Object not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /videos:
+    get:
+      tags: [videos]
+      operationId: listVideos
+      summary: List all uploaded videos
+      responses:
+        "200":
+          description: List of videos
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Video"
+    post:
+      tags: [videos]
+      operationId: createVideo
+      summary: Register a newly uploaded video and start processing
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateVideoBody"
+      responses:
+        "201":
+          description: Video created and processing started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VideoWithJob"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /videos/{id}:
+    get:
+      tags: [videos]
+      operationId: getVideo
+      summary: Get a single video with its job and clips
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Video detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VideoDetail"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    delete:
+      tags: [videos]
+      operationId: deleteVideo
+      summary: Delete a video and all of its clips
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted
+
+  /videos/{id}/job:
+    get:
+      tags: [videos]
+      operationId: getVideoJob
+      summary: Get the latest processing job for a video (status, progress, stage)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Job status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+        "404":
+          description: No job found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /videos/{id}/clips:
+    get:
+      tags: [videos]
+      operationId: listVideoClips
+      summary: List all viral clips found for a video, ranked by viral score
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Clips
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Clip"
+
+  /videos/{id}/transcript:
+    get:
+      tags: [videos]
+      operationId: getVideoTranscript
+      summary: Get the full transcript and segment timestamps for a video
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Transcript
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Transcript"
+        "404":
+          description: No transcript yet
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /videos/{id}/reprocess:
+    post:
+      tags: [videos]
+      operationId: reprocessVideo
+      summary: Re-run the viral analysis pipeline for an existing video
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "202":
+          description: Reprocessing started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+
+  /stats:
+    get:
+      tags: [videos]
+      operationId: getStats
+      summary: Get dashboard summary statistics
+      responses:
+        "200":
+          description: Stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Stats"
+
 components:
   schemas:
     HealthStatus:
@@ -31,6 +298,239 @@ components:
       properties:
         status:
           type: string
-      required:
-        - status
+      required: [status]
 
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+
+    UploadUrlRequest:
+      type: object
+      required: [name, size, contentType]
+      properties:
+        name:
+          type: string
+          minLength: 1
+        size:
+          type: integer
+          minimum: 1
+        contentType:
+          type: string
+          minLength: 1
+
+    UploadUrlResponse:
+      type: object
+      required: [uploadURL, objectPath]
+      properties:
+        uploadURL:
+          type: string
+        objectPath:
+          type: string
+        metadata:
+          $ref: "#/components/schemas/UploadUrlRequest"
+
+    CreateVideoBody:
+      type: object
+      required: [fileName, objectPath, sizeBytes, contentType]
+      properties:
+        fileName:
+          type: string
+          minLength: 1
+        objectPath:
+          type: string
+          minLength: 1
+        sizeBytes:
+          type: integer
+          minimum: 1
+        contentType:
+          type: string
+          minLength: 1
+
+    Video:
+      type: object
+      required: [id, fileName, objectPath, sizeBytes, status, createdAt]
+      properties:
+        id:
+          type: string
+        fileName:
+          type: string
+        objectPath:
+          type: string
+        sizeBytes:
+          type: integer
+        durationSeconds:
+          type: number
+          nullable: true
+        contentType:
+          type: string
+        status:
+          type: string
+          description: pending | processing | done | failed
+        createdAt:
+          type: string
+          format: date-time
+
+    Job:
+      type: object
+      required: [id, videoId, status, progressPct, stage, createdAt]
+      properties:
+        id:
+          type: string
+        videoId:
+          type: string
+        status:
+          type: string
+          description: queued | processing | done | failed
+        progressPct:
+          type: integer
+        stage:
+          type: string
+          description: Human-readable label of the current pipeline stage
+        errorMessage:
+          type: string
+          nullable: true
+        startedAt:
+          type: string
+          format: date-time
+          nullable: true
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    Clip:
+      type: object
+      required:
+        - id
+        - videoId
+        - rank
+        - startSec
+        - endSec
+        - durationSec
+        - viralScore
+        - hookScore
+        - energyScore
+        - sentimentScore
+        - keywordDensity
+        - speechRate
+        - caption
+        - hookLine
+        - transcriptText
+        - rationale
+      properties:
+        id:
+          type: string
+        videoId:
+          type: string
+        rank:
+          type: integer
+        startSec:
+          type: number
+        endSec:
+          type: number
+        durationSec:
+          type: number
+        viralScore:
+          type: number
+        hookScore:
+          type: number
+        energyScore:
+          type: number
+        sentimentScore:
+          type: number
+        keywordDensity:
+          type: number
+        speechRate:
+          type: number
+        caption:
+          type: string
+        hookLine:
+          type: string
+        transcriptText:
+          type: string
+        rationale:
+          type: string
+
+    TranscriptSegment:
+      type: object
+      required: [start, end, text]
+      properties:
+        start:
+          type: number
+        end:
+          type: number
+        text:
+          type: string
+
+    Transcript:
+      type: object
+      required: [id, videoId, fullText, language, segments]
+      properties:
+        id:
+          type: string
+        videoId:
+          type: string
+        fullText:
+          type: string
+        language:
+          type: string
+        segments:
+          type: array
+          items:
+            $ref: "#/components/schemas/TranscriptSegment"
+
+    VideoWithJob:
+      type: object
+      required: [video, job]
+      properties:
+        video:
+          $ref: "#/components/schemas/Video"
+        job:
+          $ref: "#/components/schemas/Job"
+
+    VideoDetail:
+      type: object
+      required: [video, job, clips]
+      properties:
+        video:
+          $ref: "#/components/schemas/Video"
+        job:
+          $ref: "#/components/schemas/Job"
+        clips:
+          type: array
+          items:
+            $ref: "#/components/schemas/Clip"
+
+    Stats:
+      type: object
+      required:
+        - totalVideos
+        - totalClips
+        - completedVideos
+        - processingVideos
+        - failedVideos
+        - averageViralScore
+        - topClips
+      properties:
+        totalVideos:
+          type: integer
+        totalClips:
+          type: integer
+        completedVideos:
+          type: integer
+        processingVideos:
+          type: integer
+        failedVideos:
+          type: integer
+        averageViralScore:
+          type: number
+        topClips:
+          type: array
+          items:
+            $ref: "#/components/schemas/Clip"

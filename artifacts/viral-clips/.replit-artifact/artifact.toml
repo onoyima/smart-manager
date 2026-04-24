@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "Auto Viral Clip Generator"
+version = "1.0.0"
+id = "artifacts/viral-clips"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 19090
+
+[services.development]
+run = "pnpm --filter @workspace/viral-clips run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/viral-clips", "run", "build" ]
+publicDir = "artifacts/viral-clips/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "19090"
+BASE_PATH = "/"
