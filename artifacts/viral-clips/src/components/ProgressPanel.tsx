@@ -1,8 +1,8 @@
 import { Progress } from "@/components/ui/progress";
 import { Loader2 } from "lucide-react";
-import type { Job } from "@workspace/api-client-react";
+import type { JobItem } from "@/lib/apiClient";
 
-export function ProgressPanel({ job }: { job: Job }) {
+export function ProgressPanel({ job }: { job: JobItem }) {
   return (
     <div className="glass-card rounded-xl p-6 border border-white/5 space-y-4">
       <div className="flex items-center justify-between">

@@ -1,8 +1,7 @@
 import { Layout } from "@/components/Layout";
-import { useListVideos, useDeleteVideo } from "@workspace/api-client-react";
 import { Link } from "wouter";
 import { format } from "date-fns";
-import { formatBytes, formatDuration } from "@/lib/format";
+import { formatBytes, formatDuration, shortenFileName } from "@/lib/format";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Trash2, ExternalLink, Film, Upload } from "lucide-react";
 import {
@@ -17,22 +16,31 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
+import { useState, useEffect, useCallback } from "react";
+import { apiListVideos, apiDeleteVideo, type VideoItem } from "@/lib/apiClient";
 
 export default function Videos() {
-  const { data: videos, isLoading, refetch } = useListVideos();
-  const deleteVideo = useDeleteVideo();
+  const [videos, setVideos] = useState<VideoItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const { toast } = useToast();
+
+  const fetchVideos = useCallback(() => {
+    setIsLoading(true);
+    apiListVideos()
+      .then(setVideos)
+      .catch(() => {})
+      .finally(() => setIsLoading(false));
+  }, []);
+
+  useEffect(() => { fetchVideos(); }, [fetchVideos]);
 
   const handleDelete = async (id: string) => {
     try {
-      await deleteVideo.mutateAsync({ id });
+      await apiDeleteVideo(id);
       toast({ title: "Video deleted successfully" });
-      refetch();
-    } catch (err) {
-      toast({ 
-        title: "Failed to delete video", 
-        variant: "destructive" 
-      });
+      fetchVideos();
+    } catch {
+      toast({ title: "Failed to delete video", variant: "destructive" });
     }
   };
 
@@ -52,7 +60,7 @@ export default function Videos() {
       <div className="glass-card rounded-xl border border-white/5 overflow-hidden">
         {isLoading ? (
           <div className="p-12 text-center text-white/40">Loading videos...</div>
-        ) : !videos?.length ? (
+        ) : !videos.length ? (
           <div className="flex flex-col items-center justify-center p-16 text-center border border-dashed border-white/10 rounded-xl m-4">
             <Film className="h-12 w-12 text-white/20 mb-4" />
             <h3 className="text-lg font-medium mb-2 text-white/80">No videos found</h3>
@@ -82,28 +90,19 @@ export default function Videos() {
                         <div className="h-8 w-8 rounded bg-white/5 flex items-center justify-center flex-shrink-0">
                           <Film className="h-4 w-4 text-white/40" />
                         </div>
-                        <span className="font-medium truncate max-w-[200px] md:max-w-xs">{video.fileName}</span>
+                        <span className="font-medium" title={video.fileName}>{shortenFileName(video.fileName)}</span>
                       </div>
                     </td>
-                    <td className="px-6 py-4">
-                      <StatusBadge status={video.status} />
-                    </td>
-                    <td className="px-6 py-4 text-white/70">
-                      {formatDuration(video.durationSeconds)}
-                    </td>
-                    <td className="px-6 py-4 text-white/70">
-                      {formatBytes(video.sizeBytes)}
-                    </td>
-                    <td className="px-6 py-4 text-white/70 whitespace-nowrap">
-                      {format(new Date(video.createdAt), "MMM d, yyyy")}
-                    </td>
+                    <td className="px-6 py-4"><StatusBadge status={video.status} /></td>
+                    <td className="px-6 py-4 text-white/70">{formatDuration(video.durationSeconds)}</td>
+                    <td className="px-6 py-4 text-white/70">{formatBytes(video.sizeBytes)}</td>
+                    <td className="px-6 py-4 text-white/70 whitespace-nowrap">{format(new Date(video.createdAt), "MMM d, yyyy")}</td>
                     <td className="px-6 py-4 text-right">
                       <div className="flex items-center justify-end gap-2">
                         <Link href={`/videos/${video.id}`} className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 hover:bg-accent hover:text-accent-foreground h-8 w-8 text-white/60">
                           <ExternalLink className="h-4 w-4" />
                           <span className="sr-only">View</span>
                         </Link>
-                        
                         <AlertDialog>
                           <AlertDialogTrigger asChild>
                             <button className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 hover:bg-destructive/10 hover:text-destructive h-8 w-8 text-white/60">
@@ -120,12 +119,7 @@ export default function Videos() {
                             </AlertDialogHeader>
                             <AlertDialogFooter>
                               <AlertDialogCancel className="bg-white/5 border-white/10 hover:bg-white/10 hover:text-white">Cancel</AlertDialogCancel>
-                              <AlertDialogAction 
-                                onClick={() => handleDelete(video.id)}
-                                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                              >
-                                Delete
-                              </AlertDialogAction>
+                              <AlertDialogAction onClick={() => handleDelete(video.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Delete</AlertDialogAction>
                             </AlertDialogFooter>
                           </AlertDialogContent>
                         </AlertDialog>

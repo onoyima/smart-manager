@@ -23,9 +23,36 @@ export function formatBytes(bytes: number | undefined | null): string {
 
 export function buildObjectUrl(objectPath: string): string {
   if (!objectPath) return "";
-  const cleanPath = objectPath.replace(/^\/objects\//, "");
+  const token = localStorage.getItem("accessToken");
   const base = import.meta.env.BASE_URL.endsWith("/")
     ? import.meta.env.BASE_URL
     : import.meta.env.BASE_URL + "/";
-  return `${base}api/storage/objects/${cleanPath}`;
+  let url = `${base}api/files/${objectPath}`;
+  if (token) url += `?token=${token}`;
+  return url;
 }
+
+
+export function buildClipUrl(videoId: string, clipId: string): string {
+  const token = localStorage.getItem("accessToken");
+  const base = import.meta.env.BASE_URL.endsWith("/")
+    ? import.meta.env.BASE_URL
+    : import.meta.env.BASE_URL + "/";
+  let url = `${base}api/videos/${videoId}/clips/${clipId}/download`;
+  if (token) url += `?token=${token}`;
+  return url;
+}
+
+
+
+export function shortenFileName(name: string, maxLength = 25): string {
+  if (name.length <= maxLength) return name;
+  const extIndex = name.lastIndexOf(".");
+  if (extIndex !== -1 && name.length - extIndex <= 5) {
+    const ext = name.slice(extIndex);
+    const base = name.slice(0, extIndex);
+    return base.slice(0, maxLength - ext.length - 3) + "..." + ext;
+  }
+  return name.slice(0, maxLength - 3) + "...";
+}
+

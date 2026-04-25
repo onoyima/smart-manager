@@ -1,17 +1,25 @@
-import { useGetStats, useListVideos } from "@workspace/api-client-react";
 import { Layout } from "@/components/Layout";
 import { ClipCard } from "@/components/ClipCard";
 import { StatusBadge } from "@/components/StatusBadge";
-import { formatDuration, formatBytes } from "@/lib/format";
+import { formatDuration, formatBytes, shortenFileName } from "@/lib/format";
 import { Link } from "wouter";
 import { Upload, Film, Flame, CheckCircle, Activity } from "lucide-react";
 import { format } from "date-fns";
+import { useState, useEffect } from "react";
+import { apiGetStats, apiListVideos, type StatsResponse, type VideoItem } from "@/lib/apiClient";
 
 export default function Dashboard() {
-  const { data: stats, isLoading: statsLoading } = useGetStats();
-  const { data: videos, isLoading: videosLoading } = useListVideos();
+  const [stats, setStats] = useState<StatsResponse | null>(null);
+  const [videos, setVideos] = useState<VideoItem[]>([]);
+  const [statsLoading, setStatsLoading] = useState(true);
+  const [videosLoading, setVideosLoading] = useState(true);
 
-  const recentVideos = videos?.slice(0, 5) || [];
+  useEffect(() => {
+    apiGetStats().then(setStats).catch(() => {}).finally(() => setStatsLoading(false));
+    apiListVideos().then(setVideos).catch(() => {}).finally(() => setVideosLoading(false));
+  }, []);
+
+  const recentVideos = videos.slice(0, 5);
 
   return (
     <Layout>
@@ -32,7 +40,6 @@ export default function Dashboard() {
             </Link>
           </div>
           <div className="hidden md:flex flex-col gap-4">
-            {/* Abstract visual representation */}
             <div className="w-64 h-48 rounded-xl border border-white/10 bg-white/5 p-4 flex flex-col gap-3 relative overflow-hidden">
               <div className="absolute top-0 right-0 p-4">
                 <Flame className="w-8 h-8 text-primary animate-pulse" />
@@ -51,7 +58,7 @@ export default function Dashboard() {
         {[
           { label: "Total Videos", value: stats?.totalVideos ?? "-", icon: Film },
           { label: "Viral Clips Found", value: stats?.totalClips ?? "-", icon: Flame },
-          { label: "Completed Process", value: stats?.completedVideos ?? "-", icon: CheckCircle },
+          { label: "Completed", value: stats?.completedVideos ?? "-", icon: CheckCircle },
           { label: "Avg Viral Score", value: stats?.averageViralScore ? Math.round(stats.averageViralScore) : "-", icon: Activity },
         ].map((stat, i) => (
           <div key={i} className="glass-card rounded-xl p-6 border border-white/5 flex flex-col">
@@ -66,10 +73,7 @@ export default function Dashboard() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-6">
-          <div className="flex items-center justify-between">
-            <h2 className="text-2xl font-bold tracking-tight">Top Viral Clips</h2>
-          </div>
-          
+          <h2 className="text-2xl font-bold tracking-tight">Top Viral Clips</h2>
           {statsLoading ? (
             <div className="h-64 flex items-center justify-center glass-card rounded-xl border border-white/5">
               <p className="text-white/40">Loading clips...</p>
@@ -93,35 +97,33 @@ export default function Dashboard() {
 
         <div className="space-y-6">
           <div className="flex items-center justify-between">
-            <h2 className="text-2xl font-bold tracking-tight">Recent Uploads</h2>
-            <Link href="/videos" className="text-sm text-primary hover:text-primary/80">View all</Link>
+            <h2 className="text-2xl font-bold tracking-tight">Active Processing</h2>
+            <Link href="/history" className="text-sm text-primary hover:text-primary/80">View History</Link>
           </div>
-          
           <div className="glass-card rounded-xl border border-white/5 overflow-hidden">
             {videosLoading ? (
-              <div className="p-6 text-center text-white/40">Loading videos...</div>
-            ) : !recentVideos.length ? (
-              <div className="p-6 text-center text-white/40">No videos uploaded yet</div>
+              <div className="p-6 text-center text-white/40">Loading...</div>
+            ) : !videos.filter(v => v.status === "processing" || v.status === "queued").length ? (
+              <div className="p-12 flex flex-col items-center text-center gap-3">
+                <CheckCircle className="h-8 w-8 text-white/20" />
+                <div>
+                  <p className="text-white/60">No active processing.</p>
+                  <p className="text-white/40 text-xs mt-1">Completed projects are saved in History.</p>
+                </div>
+              </div>
             ) : (
               <div className="divide-y divide-white/5">
-                {recentVideos.map((video) => (
-                  <Link key={video.id} href={`/videos/${video.id}`} className="flex flex-col p-4 hover:bg-white/[0.02] transition-colors gap-2">
-                    <div className="flex items-start justify-between gap-4">
-                      <p className="text-sm font-medium truncate" title={video.fileName}>
-                        {video.fileName}
-                      </p>
+                {videos.filter(v => v.status === "processing" || v.status === "queued").map((video) => (
+                  <Link key={video.id} href={`/videos/${video.id}`} className="flex flex-col p-4 hover:bg-white/[0.02] transition-colors gap-2 relative overflow-hidden group">
+                    <div className="absolute inset-0 bg-gradient-to-r from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                    <div className="flex items-start justify-between gap-4 relative z-10">
+                      <p className="text-sm font-medium" title={video.fileName}>{shortenFileName(video.fileName)}</p>
                       <StatusBadge status={video.status} />
                     </div>
-                    <div className="flex items-center gap-3 text-xs text-white/50">
+                    <div className="flex items-center gap-3 text-xs text-white/50 relative z-10">
                       <span>{format(new Date(video.createdAt), "MMM d, h:mm a")}</span>
                       <span>&bull;</span>
                       <span>{formatBytes(video.sizeBytes)}</span>
-                      {video.durationSeconds && (
-                        <>
-                          <span>&bull;</span>
-                          <span>{formatDuration(video.durationSeconds)}</span>
-                        </>
-                      )}
                     </div>
                   </Link>
                 ))}

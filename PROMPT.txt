@@ -1,0 +1,164 @@
+You are a senior full-stack software engineer and AI systems architect with 10+ years of experience building scalable SaaS products, video processing pipelines, and AI/ML-integrated applications.
+
+Your task is to build a complete, production-ready "Auto Viral Clip Generator" system from scratch. This is an AI-powered platform that converts long-form video content (podcasts, YouTube videos, lectures, coaching sessions) into multiple short, viral-ready clips optimized for social media platforms like TikTok, Instagram Reels, and YouTube Shorts.
+
+You will build this system step by step, in phases, following each checklist below. At each phase, write real, working code. Do not use placeholders. Do not skip steps. Ask for clarification only if a step is genuinely ambiguous. Otherwise, proceed autonomously.
+
+---
+
+TECH STACK (mandatory):
+- Frontend: Next.js 14 (App Router), TypeScript, TailwindCSS, shadcn/ui, react-dropzone, react-hook-form + zod, axios, Video.js
+- Backend: Python 3.11, FastAPI, SQLAlchemy, Pydantic, Alembic (migrations)
+- AI/ML: OpenAI Whisper API (transcription), GPT-4o (hook scoring + caption generation), OpenCV (motion/face), librosa (audio features), VADER/TextBlob (sentiment), spaCy (NER)
+- Media: FFmpeg (all video processing)
+- Infrastructure: PostgreSQL 15, Redis 7, AWS S3 (boto3), Docker, docker-compose
+- Testing: pytest, Vitest, Playwright
+- Monitoring: Prometheus, Grafana, Sentry
+
+---
+
+PHASE 0 — PROJECT SETUP:
+[ ] Create monorepo with folders: /frontend, /backend, /workers, /shared, /infra, /scripts
+[ ] Initialize Git repo with .gitignore for Node, Python, .env, and media uploads
+[ ] Create root README.md with project overview, tech stack, and setup instructions
+[ ] Set up docker-compose.yml with services: postgres, redis, backend, workers, frontend
+[ ] Create .env.example with all required environment variable keys (no real values)
+[ ] Configure Makefile with shortcuts: make dev, make build, make test, make migrate
+[ ] Install ESLint + Prettier (frontend) and Black + Flake8 (backend)
+
+---
+
+PHASE 1 — DATABASE & CORE BACKEND:
+
+Database Schema:
+[ ] users: id (UUID), email (unique), hashed_password, plan (free/pro/agency), created_at, updated_at
+[ ] videos: id, user_id (FK), filename, original_url, duration_seconds, file_size_bytes, status, created_at
+[ ] jobs: id, video_id (FK), status (queued/processing/done/failed), progress_pct, error_message, started_at, completed_at
+[ ] clips: id, job_id (FK), start_time, end_time, duration, viral_score, hook_score, energy_score, sentiment_score, clip_url, thumbnail_url, caption_url, created_at
+[ ] transcripts: id, video_id (FK), full_text, word_count, language, created_at
+[ ] transcript_segments: id, transcript_id (FK), start_sec, end_sec, text, confidence
+[ ] Add DB indexes on: user_id, video_id, job_id, status columns across all tables
+[ ] Write seed scripts for local development
+
+API Routes:
+[ ] POST /auth/register, POST /auth/login, POST /auth/refresh, POST /auth/logout
+[ ] JWT auth middleware — attaches current_user to request, validates on protected routes
+[ ] POST /upload — validate MP4/MOV, max 2GB, return S3 presigned upload URL
+[ ] POST /process/{video_id} — create job, push to Redis queue, return job_id
+[ ] GET /status/{job_id} — return job status, progress %, current stage label
+[ ] GET /results/{job_id} — return all clips with scores, URLs, captions, thumbnails
+[ ] GET /videos — paginated list of user videos
+[ ] DELETE /videos/{video_id} — soft delete, cancel active job, remove S3 files
+[ ] Rate limiting: 10 uploads/hour (free), 100 uploads/hour (pro)
+[ ] Global exception handler returning consistent {error, message, status_code} JSON
+
+Storage:
+[ ] S3 service module: generate_presigned_upload_url(), generate_presigned_download_url(), delete_object()
+[ ] S3 folder structure: /uploads/{user_id}/{video_id}/original, /processed/{job_id}/clips/, /thumbnails/, /captions/
+[ ] CORS policy on bucket for frontend domain
+[ ] S3 lifecycle rule: delete free-user originals after 30 days
+
+Queue:
+[ ] Two Redis queues: video_processing_default (free) and video_processing_priority (pro)
+[ ] Job publisher: push {job_id, video_id, user_id, plan, s3_key} to correct queue
+[ ] Retry logic: max 3 retries with exponential backoff (30s, 120s, 300s), then dead-letter queue
+[ ] Job progress Redis key: job:progress:{job_id} = {stage, pct}, TTL 24 hours
+
+---
+
+PHASE 2 — WORKER PIPELINE (15 steps, write each as a separate function):
+
+Step 1 — Setup: Pick job from Redis, update job.status = "processing", create /tmp/{job_id}/ working dir
+Step 2 — Download: Download S3 original to /tmp/{job_id}/input.mp4, verify MD5 checksum
+Step 3 — Audio extraction: FFmpeg extract to 16kHz mono WAV: ffmpeg -i input.mp4 -ar 16000 -ac 1 audio.wav
+Step 4 — Transcription: Whisper API on audio.wav, get word-level timestamps, save to DB
+Step 5 — Silence detection: librosa detect pauses >0.5s, build silence_windows list
+Step 6 — Segmentation: Split into candidate segments by sentence boundaries + silence + 90s max duration
+Step 7 — Feature extraction: per segment: energy (RMS), speech_rate (words/sec), keyword_density, sentiment_score (-1 to 1), motion_intensity (frame diff via OpenCV)
+Step 8 — Hook scoring: LLM prompt per segment's first 2 sentences: "Rate as social media hook 0.0-1.0. Return only a float."
+Step 9 — Viral scoring: ViralScore = (energy*0.30) + (keyword_density*0.20) + (sentiment*0.15) + (speech_rate*0.10) + (motion_intensity*0.10) + (hook_score*0.15). Select top 5 segments.
+Step 10 — Clip rendering: FFmpeg trim, silence removal, scale/pad to 9:16 1080x1920, H.264 MP4
+Step 11 — Captions: Generate SRT per clip from transcript, burn in with FFmpeg subtitles filter or export .srt
+Step 12 — Thumbnails: FFmpeg extract frame at 1 second, save as JPEG
+Step 13 — Upload outputs: Upload all MP4s, SRTs, JPEGs to S3 /processed/{job_id}/
+Step 14 — Save results: Insert all clip records into DB with scores, S3 keys, durations
+Step 15 — Cleanup: Delete /tmp/{job_id}/, update job.status = "done"
+Error handling: try/except around full pipeline, log stack trace, update job.status = "failed", trigger retry
+
+FRONTEND (Next.js):
+[ ] Scaffold Next.js 14, TypeScript, TailwindCSS, shadcn/ui
+[ ] Sidebar layout: Dashboard, Upload, Library, Settings. Top bar with user avatar and plan badge
+[ ] /auth/login and /auth/register with JWT httpOnly cookie, react-hook-form + zod
+[ ] /dashboard: stats cards, recent videos list, upload CTA
+[ ] /upload: drag-and-drop (react-dropzone), S3 direct upload with progress bar, start processing button
+[ ] /processing/{job_id}: polling progress every 3s, stage label, auto-redirect on completion
+[ ] /results/{job_id}: clip grid with thumbnail, viral score badge, inline preview, download button
+[ ] /library: paginated video list with status indicators
+[ ] /settings: update profile, change password, usage quota, billing
+[ ] API client with axios interceptors: attach JWT, handle 401 refresh, handle 429 toast
+[ ] Toast notifications for all async actions
+[ ] Fully responsive for 375px+ and 768px+
+
+---
+
+PHASE 3 — AI ENHANCEMENTS + SECURITY + MONITORING + DEPLOY:
+
+AI Enhancements:
+[ ] Face detection with OpenCV: auto-zoom and center on face with smooth easing if face < 40% of frame
+[ ] Word-by-word caption highlight: parse SRT word timestamps, render active word highlighted using ASS subtitle format
+[ ] Emoji overlay: spaCy NER → emoji dictionary → FFmpeg drawtext overlay at timestamps
+[ ] Auto clip title: LLM prompt "Generate a punchy 5-8 word social caption. Return only the caption." Store as clips.caption_text
+[ ] POST /clips/{clip_id}/customize — accept {aspect_ratio, caption_style, show_emoji, zoom_enabled}, re-render clip
+
+Security:
+[ ] HTTPS everywhere, HTTP → HTTPS redirect at load balancer
+[ ] bcrypt (cost 12) for all passwords. Never log hashes
+[ ] JWT access token: 15min expiry. Refresh token: 7 days, httpOnly Secure SameSite=Strict cookie
+[ ] CORS: allow only frontend domain and localhost
+[ ] All DB queries filter by user_id to prevent horizontal privilege escalation
+[ ] Pydantic input validation on all endpoints, reject unexpected fields
+[ ] Redis rate limiting: 100 req/min per IP, 500 req/min per user
+[ ] ClamAV scan on all uploads before S3 storage
+
+Testing:
+[ ] Unit tests: scoring engine with known inputs, segmentation edge cases
+[ ] Integration tests: all API routes with FastAPI TestClient
+[ ] Worker integration test: real 2-min test video through full pipeline
+[ ] Frontend component tests: Vitest + React Testing Library
+[ ] E2E tests: Playwright — register → upload → process → view results → download
+[ ] Minimum 70% backend code coverage in CI
+
+Monitoring:
+[ ] Structured JSON logging: timestamp, level, service, job_id, user_id, message, duration_ms
+[ ] Prometheus /metrics: http_requests_total, job_processing_duration_seconds, queue_length, clip_score_distribution
+[ ] Grafana dashboard: request rate, error rate, p95 latency, queue depth, clips/hour
+[ ] Grafana alerts: job failure rate >5% in 10min, queue depth >50 for 5min
+[ ] Sentry in backend and frontend, tagged with user_id, job_id, environment
+
+Deployment:
+[ ] Dockerfile for backend: Python 3.11-slim, FFmpeg, non-root user, port 8000
+[ ] Dockerfile for worker: same base + Whisper + OpenCV + librosa
+[ ] Dockerfile for frontend: Node 20-alpine, multi-stage build, port 3000
+[ ] GitHub Actions: lint → test → build → push to ECR → deploy to ECS on push to main
+[ ] Staging (auto-deploy on main) and Production (manual approval gate)
+[ ] Worker auto-scaling: scale out when queue > 10 jobs, scale in when queue empty for 5min
+[ ] Nginx/ALB: SSL termination, gzip, route /api/* to backend, /* to frontend
+[ ] PostgreSQL daily automated backups. Document RTO and RPO.
+
+---
+
+FINAL VALIDATION:
+[ ] E2E test: 30-min podcast MP4 → 5 clips with scores, captions, thumbnails
+[ ] All clips are 9:16 and browser-playable
+[ ] Captions time-synced within 200ms
+[ ] Rate limiting: 11th upload in 1 hour for free user returns 429
+[ ] User cannot access another user's clips (403)
+[ ] Worker retries on failure, dead-letters after 3 attempts
+[ ] Load test: 20 concurrent processing jobs — no crash
+[ ] OWASP ZAP scan — fix all critical/high findings
+[ ] No secrets in version control
+[ ] Deployment runbook written: deploy, rollback, scale workers, restore DB
+
+---
+
+Begin with Phase 0. After completing each phase, summarize what was built and confirm you are ready to proceed to the next phase before continuing.

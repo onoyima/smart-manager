@@ -2,10 +2,10 @@ import { Link } from "wouter";
 import { Play } from "lucide-react";
 import { ViralScoreRing } from "./ViralScoreRing";
 import { formatDuration } from "@/lib/format";
-import type { Clip } from "@workspace/api-client-react";
+import type { ClipItem } from "@/lib/apiClient";
 
 interface ClipCardProps {
-  clip: Clip;
+  clip: ClipItem;
   onClickPlay?: () => void;
   showLink?: boolean;
 }
